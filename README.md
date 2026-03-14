@@ -106,9 +106,15 @@ Now let's return to those three Fridays.
 
 **Marcus doesn't have a backlog.** He doesn't have blocked teammates. He also doesn't have a knot in his stomach — and that's the problem. His code didn't pass through human review at all. It's not on any balance sheet. He can't point at the PRs he rushed because he didn't rush them — he never entered the loop. 12,000 lines running in production, and Marcus reviews outcomes, not implementations. "Who owns this code?" Marcus would say he does. He'd be wrong. He owns the *outcomes*. Nobody owns the *code*. This is **alien code** — code that bypassed human mapping entirely. Unknown unknowns. He'll discover it the way you discover a gas leak: when something explodes.
 
-**Leila's knot has a name now.** Her 4:47 PM LGTM created **cognitive debt** — code she *knows* she didn't fully understand, sitting in production. Known unknowns. She can point at the PRs she rushed. She remembers which ones made her uneasy. She can measure it. She can choose to pay it down by going back, this time with coffee and no deadline, and actually reading what she approved. It's on the balance sheet. That's the one good thing about it — she knows it's there. "Who owns this code?" She's not sure. But at least she knows she's not sure.
+**Leila's knot has a name now.** Her 4:47 PM LGTM created **cognitive debt** — code she *knows* she didn't fully understand, sitting in production. Known unknowns. She can point at the PRs she rushed. She remembers which ones made her uneasy.
 
-Cognitive debt is what you get when "who owns this?" has an uncertain answer. Alien code is what you get when the question has no answer at all.
+For now. She approved twelve like that last month. Her teammate approved eight more. By next quarter she won't remember which specific PRs gave her that knot — she'll just carry a vague sense that there are things she doesn't understand somewhere in the codebase. Cognitive debt is only manageable if it's actually tracked. Right now the only tracking system she has is her memory, and her memory is already losing the list.
+
+How many Leilas are on her team doing the same math? How many quiet LGTMs happened this week across the org, each one a knot that will be forgotten before it gets paid down?
+
+"Who owns this code?" She's not sure. But at least she knows she's not sure — and that's the entire difference between her situation and Marcus's. The question came up. The answer just never got written down.
+
+Cognitive debt is when "who owns this?" gets asked and the honest answer is: nobody. The question came up. The gap is visible. Alien code is when the question never came up at all.
 
 For the purposes of this article — and for measurement — I'll define cognitive debt concretely:
 
