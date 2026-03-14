@@ -10,7 +10,7 @@ This repository hosts an article proposing the VOUCH Framework for managing cogn
 
 **Share your data.** If you've measured anything resembling cognitive debt in your own organization — review times, incident correlation with AI-generated code, onboarding friction — we want to hear about it. Anecdotes are valuable. Data is better.
 
-**Build tooling.** The `vouch` CLI described in the article is a starting point. If you build a prototype (in any language, with any storage backend), link it here. The framework is language-agnostic and implementation-agnostic by design.
+**Build tooling.** The `vouch` CLI described in the [companion article](VOUCH-CLI.md) is a starting point. If you build a prototype (in any language, with any storage backend), link it here. The framework is language-agnostic and implementation-agnostic by design.
 
 ## What this is not
 

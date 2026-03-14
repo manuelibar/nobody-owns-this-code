@@ -337,7 +337,7 @@ The protocol is storage-agnostic. Endorsement records can live in git notes, a s
 4. Records SHOULD travel with the repository (no external service required for basic operation).
 5. Actual source code MUST NOT be transmitted to third-party services to compute or store endorsement data. The protocol operates on metadata only: file paths, hashes, identities, timestamps.
 
-The reference implementation described in the next section uses git notes. It's a reasonable starting point with real tradeoffs.
+One reference implementation using git notes is described in the companion article, [vouch: A Reference Implementation Proposal](VOUCH-CLI.md).
 
 ### What the framework doesn't do
 
@@ -351,174 +351,23 @@ Intellectual honesty demands acknowledging the limitations:
 
 ---
 
-## 7. A CLI Named `vouch` (and a Skill Named `vouch`)
+## 7. What a VOUCH Tool Must Provide
 
-### The CLI
+The protocol specifies *what* must be tracked. It doesn't specify *how*. Any conforming implementation — a CLI, an IDE plugin, a GitHub App — needs to satisfy a set of behavioral requirements to be useful. Here's what those are.
 
-Writing an endorsement:
+**A communication pattern that mirrors `git status`.** A VOUCH tool must tell you what changed in your endorsement coverage and what your options are. The pattern: pull the latest code, then check what those changes cost you in endorsement terms. Revoked endorsements surfaced with the commit that caused them, the author of that commit, and the exact commands to re-endorse or retract. The same grammar developers already use to understand their working tree.
 
-```bash
-vouch endorse src/payment/gateway.go
-```
+**Three-state visibility at two levels of granularity.** The tool must surface the three states — endorsed, reviewed, unknown — at both directory level (which files are covered and by whom) and line level (which ranges within a file are covered). Directory-level is the daily view; line-level is the diagnostic view when you need to understand exactly what went dark. Both views must be queryable, filterable, and scriptable.
 
-You're positioned at the current commit. You're telling the system: "I have reviewed this file. I understand what it does. I am responsible for it." Line ranges default to the full file; an agent-assisted review session can produce granular line-level records instead.
+**Agent participation model.** A VOUCH tool integrated with agentic coding tools must implement three behaviors: query the endorsement state of files before modifying them and surface the coverage impact to the human; self-report as author after generating code, flagging it as unendorsed; and assist human understanding during review — explaining what code does, why it's structured that way, what assumptions it makes. The endorsement is the human's to give. The agent helps them earn it.
 
-If you don't endorse, nothing breaks. The code ships. The committer is recorded as author (standard git behavior), the file is flagged as *unendorsed*. No gates, no blocks — just signal.
+**Strategic Ignorance, formalized.** Any implementation must support excluding paths from the cognitive debt calculation. A `.vouchignore` file (or equivalent configuration) declares: "we have decided, as a team, that this code is outside our comprehension boundary." Lock files, generated code, build artifacts, vendored dependencies. This is not a loophole — it's a declaration of engineering intent. The exclusion file *is* the documentation of that decision. When your team puts `**/generated/**` in `.vouchignore`, they're saying: "We trust the generator, not the output." As long as that decision is conscious and documented, it's a valid engineering choice.
 
-**Inspecting ownership — `vouch ls`:**
+**CI as enforcement point.** The tool must integrate into CI/CD and gate on per-tier cognitive debt thresholds. Tier-1 critical path has different tolerance than internal tooling. The pipeline fails when a change pushes a tier above its threshold, the PR author sees exactly what caused it, and the fix is an endorsement — not a rollback. Thresholds are team decisions; the tool provides the enforcement mechanism.
 
-```
-$ vouch ls src/payment/
-ENDORSED  REVIEWED  UNKNOWN  FILE                   OWNERS
-    87%       8%       5%    gateway.go             mibar, sarah
-    45%       0%      55%    processor.go           mibar
-     0%      23%      77%    webhook_handler.go     —
-   100%       0%       0%    types.go               sarah
-```
+**The endorsement as the irreducible human element.** The tool may use agents to assist — explaining code, surfacing changes, pre-digesting comprehension. But the endorsement itself — the assertion "I understand this and I am responsible for it" — cannot be delegated. The tool must enforce this distinction: agents author, humans endorse.
 
-Defaults to CWD if no path is given. Use `--dir` (`-d`) to scope explicitly. Three columns map directly to the framework: `ENDORSED` (owned), `REVIEWED` (cognitive debt), `UNKNOWN` (alien code).
-
-For line-level detail on a specific file:
-
-```
-$ vouch ls -a src/payment/gateway.go
-LINES     STATE       OWNERS          AGE
-1-89      endorsed    mibar, sarah    3w
-90-102    reviewed    sarah           1w
-103-147   unknown     —               —
-148-200   endorsed    mibar           3w
-```
-
-**Scanning coverage — `vouch stats`:**
-
-```bash
-$ vouch stats --dir src/ --exclude "**/*.test.go"
-Endorsed:        70%
-Cognitive Debt:  18%  (reviewed, unendorsed)
-Alien Code:      12%  (never seen)
-Tier-1 threshold: 20%  ✓
-
-$ vouch stats --config .vouchrc   # use project config for dirs, excludes, thresholds
-```
-
-`vouch stats` is the CI-facing command. `vouch ls` is the human-facing command. Same underlying data, different presentation.
-
-**The communication protocol — `vouch status`:**
-
-`git pull && vouch status`. This is the loop.
-
-```
-$ git pull
-Updating abc123..def456
- src/core/query_optimizer.go  |  47 ++++---
- src/payment/processor.go     |  12 +-
-
-$ vouch status
-Your endorsements revoked by recent changes:
-  (use "vouch endorse <file>" to re-endorse after reviewing the diff)
-  (use "vouch retract <file>" to withdraw your endorsement)
-
-        revoked: src/core/query_optimizer.go    commit abc123  by agent
-        revoked: src/payment/processor.go       commit def456  by sarah
-
-nothing else to act on.
-```
-
-Same grammar as `git status`: what changed, what you can do about it, the exact commands to do it. The post-merge hook has already run `vouch sync` — by the time you type the command, the state reflects reality.
-
-Nobody touched your endorsements. The code changed under them. Now the decision is yours: re-endorse after reviewing the diff, or retract and let the lines sit as known cognitive debt. Either way the materialized view updates immediately and the metric is honest.
-
-**`vouch retract`** is the personal withdrawal command — use it when you've decided you no longer own a file or a line range, independent of any structural change:
-
-```bash
-vouch retract src/payment/processor.go        # full file
-vouch retract src/payment/processor.go 45 67  # specific line range
-```
-
-Retract is different from revocation: you're not being told your coverage lapsed, you're choosing to end it. The record is preserved with `retracted: true` and the reason is yours to add.
-
-**Storage: git notes.** Endorsement data lives in [git notes](https://git-scm.com/docs/git-notes) — metadata attached to git objects without modifying the commit history. No merge conflicts. The data travels with the repository. Each endorsement is stored as a JSON record per the protocol spec, anchored to a commit hash and scoped to line ranges. A separate `refs/notes/vouch-state` note on HEAD holds the materialized current state — what CI reads.
-
-**Git hook — keeping the materialized state current:**
-
-```bash
-# .git/hooks/post-commit  (also post-merge, post-checkout)
-vouch sync
-```
-
-`vouch sync` rebuilds the materialized state from endorsement records and writes it to `refs/notes/vouch-state`. With this hook in place, coverage is always fresh — no manual rebuild, no stale CI reads. It's the bridge between the append-only write path and the O(1) read that CI needs.
-
-### The Agent Skill
-
-The real power isn't the CLI alone — it's the `vouch` skill integrated into agentic coding tools. The agent itself participates in the endorsement workflow:
-
-**Before modifying code**, the agent queries the endorsement state for the files it's about to touch. "I'm about to modify `src/payment/gateway.go`. Ana endorsed this file 3 weeks ago. If my changes are non-cosmetic, her endorsement will be revoked — she'll see it in `vouch status` on her next pull. Cognitive debt for the payment service will rise from 18% to 24%, above the 20% Tier-1 threshold. Proceed?"
-
-**After generating code**, the agent self-reports as author. The code is flagged as AI-generated, unendorsed. The heatmap updates in real time.
-
-**During review**, the agent helps the human *understand* — not just write. "You asked me to explain this module. Here's what it does, why it's structured this way, and what assumptions it makes." The human reads the explanation, traces the code, and when they genuinely understand it: `vouch endorse`.
-
-### Ana's Monday Morning
-
-Ana opens her terminal and pulls.
-
-```bash
-git pull
-vouch status
-```
-
-Two files come back: `src/core/query_optimizer.go` revoked three days ago by an agent, `src/payment/processor.go` revoked this morning by a teammate. She runs `vouch stats --config .vouchrc` — core data is at 31%, above the 20% Tier-1 threshold. That's the one that matters.
-
-She runs `vouch ls -a src/core/query_optimizer.go` to see which line ranges went dark. She opens the file, asks her coding agent to walk her through what changed: "The refactor replaced the nested loop join selection with a cost-based optimizer. Core logic changed in three functions. Here's what each one does and why."
-
-Ana reads the explanation, traces the code, runs the tests herself. She runs `vouch endorse src/core/query_optimizer.go`. `vouch stats` updates: core data 19%. Below threshold. Green.
-
-It's 10:15 AM. She moves on to feature work. No PR queue. No blocked teammates. No Slack escalations.
-
-### `.vouchignore` — Strategic Ignorance, formalized
-
-Not all code needs human endorsement. The `.vouchignore` file (included in this repository) declares patterns that are excluded from cognitive debt calculation entirely, using standard gitignore syntax. Lock files, generated code, build artifacts, massive test fixtures, vendored dependencies — these are alien code by design. They were never meant to be read by humans. Excluding them is not gaming the metric; it's being honest about where human comprehension matters.
-
-The distinction is important: `.vouchignore` is not a loophole. It's a declaration of engineering intent. When your team puts `**/generated/**` in `.vouchignore`, they're saying: "We have decided, as a team, that generated code is outside our comprehension boundary. We trust the generator, not the output." That's a valid engineering decision — as long as it's conscious and documented. The `.vouchignore` file *is* the documentation.
-
-### Honest about the tradeoffs
-
-[Git notes](https://tylercipriani.com/blog/2022/11/19/git-notes-gits-coolest-most-unloved-feature/) are git's most underloved feature for good reasons:
-
-- They don't auto-push or auto-pull. You need explicit `git push origin refs/notes/*` and corresponding fetch configurations. This is friction, and friction kills adoption.
-- There's a ~1MB size limit per note per commit object. For large monorepos with thousands of files, the storage model needs careful design.
-- Notes attach to commit objects, not file paths. Mapping "endorsement of a file" to "note on a commit" requires an indexing layer that doesn't exist in git natively.
-
-These are real tradeoffs, not dealbreakers. If you have a better storage mechanism — a sidecar SQLite database, a lightweight service, a custom git ref namespace — build it. The VOUCH Protocol doesn't depend on git notes. It depends on metadata that travels with the repository and doesn't create merge conflicts.
-
-### CI/CD integration
-
-Where `vouch` becomes operationally powerful is as a CI/CD gatekeeper. The `.vouchrc` defines directory scopes, exclusions, and thresholds in one place:
-
-```yaml
-# .vouchrc
-tiers:
-  - name: critical
-    paths: [src/payment/, src/auth/]
-    max_cognitive_debt: 20%
-    max_alien_code: 5%
-  - name: business
-    paths: [src/]
-    max_cognitive_debt: 40%
-    max_alien_code: 20%
-
-exclude:
-  - "**/*.test.go"
-  - "**/generated/**"
-```
-
-CI runs `vouch stats --config .vouchrc`. If any tier exceeds its threshold, the pipeline fails. The PR author sees: "This change introduces 450 lines of unendorsed code in a Tier-1 service. Cognitive debt: 23% (threshold: 20%). Alien code: 7% (threshold: 5%). Endorse or request endorsement before merging."
-
-### Agentic-assisted reviews
-
-The next frontier isn't agents that *write* code but agents that *explain* it. Imagine an agent whose job isn't to implement a feature but to reverse-engineer the intent of code that another agent implemented — decompiling logic into human-readable explanations, annotating design decisions, surfacing implicit assumptions, pre-digesting comprehension so that humans can endorse faster and more confidently. Agents auditing agents. Not for correctness (we have tests for that) but for comprehensibility.
-
-This is the natural course of this revolution. The same technology that created the comprehension gap will inevitably be part of closing it. But the endorsement — the human assertion of "I understand and I own this" — must remain the irreducible human element in the loop. An agent can help you understand. Only you can decide that you do.
+The companion article, [vouch: A Reference Implementation Proposal](VOUCH-CLI.md), presents a concrete CLI and agent skill design built on these requirements. It's one answer. There should be many.
 
 ---
 
@@ -542,7 +391,7 @@ So here's the call to action, and it's simple:
 
 Try measuring cognitive debt in your own codebase. Pick a critical service. Walk the code. Ask: "Who on this team can explain what this module does at 3 AM?" If the answer is "nobody" or "maybe Sarah, but she's on vacation," that's your cognitive debt, right there. No tooling required — just honest assessment.
 
-Build better tools. The `vouch` CLI outlined above is a reference implementation sketch, not a finish line. If git notes are wrong, use something else. If AST hashing is too coarse, make it finer. If the protocol has blind spots, expose them. Fork the protocol, break it, submit PRs with improvements. Build a VS Code extension that shows the heatmap inline. Build a GitHub Action that gates PRs on cognitive debt thresholds. Build a Grafana dashboard that tracks endorsement coverage alongside uptime. The important thing is that *something* exists — some mechanism for humans to explicitly say "I own this" in a way that's tracked, queryable, and integrated into the development workflow.
+Build better tools. The `vouch` CLI described in the [companion article](VOUCH-CLI.md) is a reference implementation sketch, not a finish line. If git notes are wrong, use something else. If the protocol has blind spots, expose them. Fork the protocol, break it, submit PRs with improvements. Build a VS Code extension that shows the heatmap inline. Build a GitHub Action that gates PRs on cognitive debt thresholds. Build a Grafana dashboard that tracks endorsement coverage alongside uptime. The important thing is that *something* exists — some mechanism for humans to explicitly say "I own this" in a way that's tracked, queryable, and integrated into the development workflow.
 
 Challenge the metric. If you think cognitive debt is measurable but this isn't the right way to measure it, write about that. If you think it's unmeasurable by nature — that any attempt to quantify human understanding is fundamentally flawed — write about that too. Push back. Poke holes. The VOUCH Protocol is v0.1 for a reason: it's designed to be wrong in instructive ways. The worst outcome isn't that we measure it wrong — it's that we don't measure it at all and discover the consequences during a production incident.
 
