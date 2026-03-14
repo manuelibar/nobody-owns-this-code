@@ -222,15 +222,11 @@ The core model rests on a few principles:
 
 **Authorship is not endorsement — by default and by design.** Committing code MUST NOT auto-create an endorsement. The act of writing a change and the act of vouching for it are separate, deliberate acts. A developer can — and often should — commit code without endorsing it: prototypes, exploratory work, agent-generated sections they haven't fully reviewed, changes that need a second pair of eyes. The endorsement is the moment of ownership declaration. The commit is not. An agent authors code. A developer commits code. A human endorses it. The protocol keeps these three roles distinct. Nothing in the write path implies anything about the comprehension path.
 
-**Endorsement Revocation Strategy.** When structural change invalidates an endorsement, the prior endorser's coverage is immediately and fully revoked. No transitional state, no grace period. The code changed — the endorsement no longer reflects reality, so it's gone. The revocation event is recorded with full metadata: what changed, who changed it, which commit, when. That record is what `vouch status` reads.
+**Revocation and Retraction.** Nobody can directly remove someone else's endorsement. The only thing that revokes an endorsement is the code changing underneath it. When a commit introduces non-cosmetic changes to lines you endorsed, those endorsements are **soft-deleted** by the system: the records are preserved but marked `revoked`, the materialized view updates immediately on hook runtime, and the coverage those lines represented drops to zero.
 
-Two strategies exist for what happens next:
+The endorser discovers this on their next `vouch status` — after a pull, after a branch switch, whenever. At that point they have two options: **re-endorse** (reviewed the diff, understand the new state, still own it) or **retract** (voluntarily withdraw from this file or these lines).
 
-- **Immediate (default):** Hard revocation, no notification required. The endorser discovers what they lost via `vouch status` — a natural companion to `git pull`. They review the diff, decide whether to re-endorse, and act. No web dependency, no ceremony. Just honest accounting and a clear decision point.
-
-- **Collaborative:** The revocation event triggers an active review request to prior endorsers, analogous to CODEOWNERS-based reviewer solicitation. The prior endorser must explicitly re-endorse, revoke, or nominate a replacement. Requires a notification layer and durable state management — beyond a CLI, but a natural fit for web extensions built over VCS primitives: PR review requests, GitHub/GitLab integrations, bot-mediated handoffs.
-
-The vouch CLI is aggressive by default. The collaborative layer is additive, not a replacement.
+**Retract** is a personal act. Only you can retract your own endorsement. **Revocation** is what the system does to your endorsement when the code changes underneath you. The distinction matters: revocations are events that happened to your endorsement; retractions are decisions you made about it.
 
 **Two distinct measurements.** VOUCH tracks two things that are easy to conflate and critical to keep separate:
 
@@ -290,7 +286,7 @@ The protocol defines four operations:
 
 **`ENDORSE`** — Create or update an endorsement record for a file. The implementation MUST compute the current AST hash and store it with the endorsement. If the file already has an endorsement by the same endorser, the operation updates the timestamp and AST hash (re-endorsement after changes).
 
-**`REVOKE`** — Explicitly remove an endorsement. Used when an endorser leaves the team, changes roles, or determines they no longer understand the code sufficiently. Revocation is an affirmative act — endorsements don't just expire, but implementations MAY support time-based staleness warnings (e.g., "this endorsement is 18 months old").
+**`RETRACT`** — Voluntarily withdraw your own endorsement. Only the endorser can issue a retraction — it is a personal act, not an administrative one. Used when you determine you no longer understand the code, have changed roles, or want to explicitly signal that your coverage has lapsed. Implementations MAY surface staleness warnings (e.g., "this endorsement is 18 months old"), but staleness alone does not trigger revocation. Revocation is reserved for structural code changes; retraction is reserved for the endorser's own decision.
 
 **`QUERY`** — Retrieve endorsement status for a file, directory, or glob pattern. Returns the list of current endorsements, their staleness, and whether the AST hash still matches (i.e., whether the code has changed since endorsement).
 
@@ -300,9 +296,9 @@ The protocol defines four operations:
 
 Endorsements are not permanent. The protocol defines three invalidation triggers:
 
-1. **Structural change.** When the logic, control flow, or data model of endorsed lines changes, the endorsements covering those lines are invalidated. The record is preserved but marked `invalidated: structural_change`. Endorsements on unchanged lines survive.
+1. **Structural change (system revocation).** When the logic, control flow, or data model of endorsed lines changes, those endorsements are soft-deleted by the system — **revoked**, not retracted. The record is preserved but marked `revoked: structural_change`. The materialized view updates immediately on hook runtime. Endorsements on unchanged lines survive. The endorser is notified on their next `vouch status`.
 
-   What does NOT trigger eviction: formatter runs, whitespace changes, comment edits, file renames, code moving within the project structure. An endorsement survives a `gofmt` pass and survives a file moving from `src/payment/gateway.go` to `pkg/payment/gateway.go`. It does not survive a change to the control flow within the endorsed lines. The implementation is responsible for detecting the difference; the protocol mandates the behavior.
+   What does NOT trigger revocation: formatter runs, whitespace changes, comment edits, file renames, code moving within the project structure. An endorsement survives a `gofmt` pass and survives a file moving from `src/payment/gateway.go` to `pkg/payment/gateway.go`. It does not survive a change to the control flow within the endorsed lines. The implementation is responsible for detecting the difference; the protocol mandates the behavior.
 
 2. **Endorser departure.** When an endorser is removed from the team roster (however that's managed), their endorsements SHOULD be marked `at_risk` rather than immediately invalidated. The knowledge may still be reachable (the person might be in another team, or contactable), but the endorsement's operational value is degraded.
 
@@ -407,9 +403,9 @@ $ vouch stats --config .vouchrc   # use project config for dirs, excludes, thres
 
 `vouch stats` is the CI-facing command. `vouch ls` is the human-facing command. Same underlying data, different presentation.
 
-**Tracking your revocations — `vouch status`:**
+**The communication protocol — `vouch status`:**
 
-The workflow that replaces the notification system: `git pull && vouch status`.
+`git pull && vouch status`. This is the loop.
 
 ```
 $ git pull
@@ -418,18 +414,28 @@ Updating abc123..def456
  src/payment/processor.go     |  12 +-
 
 $ vouch status
-ENDORSEMENTS REVOKED BY RECENT CHANGES:
-  src/core/query_optimizer.go    revoked 2m ago   commit: def456   author: agent
-  src/payment/processor.go       revoked 3d ago   commit: abc789   author: sarah
+Your endorsements revoked by recent changes:
+  (use "vouch endorse <file>" to re-endorse after reviewing the diff)
+  (use "vouch retract <file>" to withdraw your endorsement)
 
-2 files. Run 'vouch ls -a <file>' to inspect. Run 'vouch endorse <file>' to reclaim.
+        revoked: src/core/query_optimizer.go    commit abc123  by agent
+        revoked: src/payment/processor.go       commit def456  by sarah
+
+nothing else to act on.
 ```
 
-Pull brings changes. `vouch status` shows what those changes cost you in endorsement coverage. The post-merge hook has already run `vouch sync`, so by the time you type `vouch status` the state is current — no manual rebuild.
+Same grammar as `git status`: what changed, what you can do about it, the exact commands to do it. The post-merge hook has already run `vouch sync` — by the time you type the command, the state reflects reality.
 
-Same cadence you already have for `git status`. No emails, no review request queues, no web UI. You own the decision to re-endorse or not — and the cognitive debt counter reflects whichever choice you make, immediately and honestly.
+Nobody touched your endorsements. The code changed under them. Now the decision is yours: re-endorse after reviewing the diff, or retract and let the lines sit as known cognitive debt. Either way the materialized view updates immediately and the metric is honest.
 
-For teams that want structured handoffs — review requests, transfer ceremonies, CODEOWNERS-style solicitation on invalidation — that's the territory of web extensions built over GitHub/GitLab primitives. The CLI does the aggressive strategy well and leaves the collaborative layer above it.
+**`vouch retract`** is the personal withdrawal command — use it when you've decided you no longer own a file or a line range, independent of any structural change:
+
+```bash
+vouch retract src/payment/processor.go        # full file
+vouch retract src/payment/processor.go 45 67  # specific line range
+```
+
+Retract is different from revocation: you're not being told your coverage lapsed, you're choosing to end it. The record is preserved with `retracted: true` and the reason is yours to add.
 
 **Storage: git notes.** Endorsement data lives in [git notes](https://git-scm.com/docs/git-notes) — metadata attached to git objects without modifying the commit history. No merge conflicts. The data travels with the repository. Each endorsement is stored as a JSON record per the protocol spec, anchored to a commit hash and scoped to line ranges. A separate `refs/notes/vouch-state` note on HEAD holds the materialized current state — what CI reads.
 
@@ -446,7 +452,7 @@ vouch sync
 
 The real power isn't the CLI alone — it's the `vouch` skill integrated into agentic coding tools. The agent itself participates in the endorsement workflow:
 
-**Before modifying code**, the agent queries cognitive debt. "I'm about to modify `src/payment/gateway.go`. This file has one endorser (Ana, 3 weeks ago). Cognitive debt for the payment service is 18%. Proceeding will invalidate Ana's endorsement and push it to 24%, above the 20% threshold for Tier-1. Do you want to proceed?"
+**Before modifying code**, the agent queries the endorsement state for the files it's about to touch. "I'm about to modify `src/payment/gateway.go`. Ana endorsed this file 3 weeks ago. If my changes are non-cosmetic, her endorsement will be revoked — she'll see it in `vouch status` on her next pull. Cognitive debt for the payment service will rise from 18% to 24%, above the 20% Tier-1 threshold. Proceed?"
 
 **After generating code**, the agent self-reports as author. The code is flagged as AI-generated, unendorsed. The heatmap updates in real time.
 
