@@ -4,6 +4,17 @@
   <img src="https://github.com/user-attachments/assets/2d01f20f-aee6-46e0-a605-0f2981b711ae" alt="Nobody Owns This Code" width="100%" />
 </p>
 
+| # | Section | Key ideas |
+|---|---------|-----------|
+| 1 | [Three Fridays](#1-three-fridays) | Ana, Marcus, Leila — three strategies for the same crisis |
+| 2 | [A Brief History of Owing the Compiler Money](#2-a-brief-history-of-owing-the-compiler-money) | Cunningham's metaphor, vibe coding, where it breaks |
+| 3 | [Naming the Ghosts](#3-naming-the-ghosts) | Cognitive debt, alien code — vocabulary for the gap |
+| 4 | [The Coverage Trap](#4-the-coverage-trap) | Goodhart's Law, strategic ignorance, why zero is an anti-pattern |
+| 5 | [The Middle Path](#5-the-middle-path) | Endorsement as the unit of comprehension |
+| 6 | [From Writing Syntax to Governing Intent](#6-from-writing-syntax-to-governing-intent) | The VOUCH Framework — three signals, two axes, the living heatmap |
+| 7 | [The VOUCH Ethos](#7-the-vouch-ethos) | Eight principles, honest limitations |
+| 8 | [Surfing the Wave Together](#8-surfing-the-wave-together) | The 3 AM test |
+
 ---
 
 ## 1. Three Fridays
