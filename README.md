@@ -1,4 +1,4 @@
-# Approve and Pray. Halt and Pray. Cognitive Debt, Code Ownership, and the Tools We're Missing
+# Nobody Owns This Code: Cognitive Debt, Code Ownership, and the Tools We're Missing
 
 *By [Manuel Ibar](https://github.com/mibar) — March 2026*
 
@@ -12,9 +12,17 @@ Let me tell you two stories. They're unfolding simultaneously, in different corn
 
 They didn't rubber-stamp it. Rubber-stamping is lazy — it's the act of not caring. This was something more anxious and visceral. They *tried* to review it. Opened every file. Traced every function call they could follow. Cross-referenced the ticket. Checked the test assertions. And then hit the wall of their own cognitive bandwidth. They approved it anyway, because the alternative was blocking the entire team for another day, and there's a demo on Monday. They approved and prayed.
 
-**The second story** takes place at a Fortune 500 that learned, through years of expensive incidents, not to ship code without process. The same PR — same 847 lines, same agent, same CI — enters the review queue on Monday. It needs a security sign-off first. The security review backlog is two days deep. On Wednesday, the security engineer reviews it for eleven minutes, checks for injection vulnerabilities and obvious secret exposure, finds nothing, approves. It still needs an architecture review: the board meets on Thursdays. Thursday comes; the architect has six PRs on the agenda and eight minutes for this one — design is consistent with existing patterns, good enough, approved. Still needs two senior engineer approvals, required by the team's branching policy. Both seniors are processing an average of eleven PRs per week on top of their own feature work. First senior approves Friday. Second senior asks two clarifying questions. The author — who has mentally shipped this code and moved on to the next sprint — answers on Tuesday. Final approval arrives Wednesday. Fifteen calendar days after the PR was opened. Six separate JIRA transitions.
+**The second story** takes place at a Fortune 500 that learned, through years of expensive incidents, not to ship code without process. Same PR. Same 847 lines. Same green CI. It enters the queue on Monday.
 
-Five people reviewed it. None of them understood it as a *system*. The security engineer understood the surface. The architect understood the structure. The seniors understood fragments of the logic. Nobody looked at the whole picture. Nobody talked to each other about this specific code. Nobody owns the mental model of what this module does, why it does it that way, or what breaks if the assumptions change.
+Security sign-off first — two days in the backlog, eleven minutes of review, no injection vulnerabilities found, approved. Architecture review next — the board meets Thursdays, the architect has six PRs on the agenda, eight minutes for this one, pattern looks consistent with the existing design, approved. Still needs two senior engineer approvals. The first senior merges it into her queue alongside ten others and approves on Friday without comment.
+
+The second senior — let's call her Ana, though there's an Ana on every team — opens the PR the following Tuesday. She has eleven PRs ahead of this one and a bug that's been eating her alive for three days. She reads the first three files carefully, traces the core logic, then hits a function she doesn't fully follow. She leaves two clarifying questions in the comments and moves on to the next PR in her queue because she can't let everything block on this.
+
+The author sees the comments on Thursday. He's two sprints past this mentally, but the questions are fair, so he writes a three-line reply and goes back to what he was doing. Ana reads the answers Friday morning. They're technically correct. She marks herself satisfied and approves.
+
+Fifteen calendar days. Six JIRA transitions. Five approvals.
+
+Ana closes her laptop feeling briefly good about having asked the hard questions. She is not a bad engineer — she is, in fact, a very good one. She did exactly what the process asked: she reviewed, she questioned, she approved. What the process never asked her to do was *understand the system*. So she doesn't. And neither does anyone else in that pipeline.
 
 The code ships, fifteen days late. They halted and prayed.
 
