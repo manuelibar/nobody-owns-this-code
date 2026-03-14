@@ -214,7 +214,7 @@ All of these tools track **authorship** and **routing**. In 2026, authorship is 
 
 ### The VOUCH Framework
 
-**VOUCH** — **V**alidated **O**wnership and **U**nderstanding of **C**ode by **H**umans — is a conceptual framework for tracking human endorsement of code, and the implementation of the middle path described above. Think of it as CODEOWNERS with teeth — granular, automated, AST-aware, and integrated into the development workflow rather than bolted onto it.
+**VOUCH** — **V**alidated **O**wnership and **U**nderstanding of **C**ode by **H**umans — is a conceptual framework for tracking human endorsement of code, and the realization of the middle path described above. Think of it as CODEOWNERS with teeth — granular, structurally aware, and integrated into the development workflow rather than bolted onto it.
 
 The core model rests on a few principles:
 
@@ -222,9 +222,9 @@ The core model rests on a few principles:
 
 **Authorship is not endorsement — by default and by design.** Committing code MUST NOT auto-create an endorsement. The act of writing a change and the act of vouching for it are separate, deliberate acts. A developer can — and often should — commit code without endorsing it: prototypes, exploratory work, agent-generated sections they haven't fully reviewed, changes that need a second pair of eyes. The endorsement is the moment of ownership declaration. The commit is not. An agent authors code. A developer commits code. A human endorses it. The protocol keeps these three roles distinct. Nothing in the write path implies anything about the comprehension path.
 
-**Revocation and Retraction.** Nobody can directly remove someone else's endorsement. The only thing that revokes an endorsement is the code changing underneath it. When a commit introduces non-cosmetic changes to lines you endorsed, those endorsements are **soft-deleted** by the system: the records are preserved but marked `revoked`, the materialized view updates immediately on hook runtime, and the coverage those lines represented drops to zero.
+**Revocation and Retraction.** Nobody can directly remove someone else's endorsement. The only thing that revokes an endorsement is the code changing underneath it. When a commit introduces non-cosmetic changes to lines you endorsed, those endorsements are **soft-deleted** by the system: the records are preserved but marked `revoked`, and the coverage those lines represented drops to zero immediately.
 
-The endorser discovers this on their next `vouch status` — after a pull, after a branch switch, whenever. At that point they have two options: **re-endorse** (reviewed the diff, understand the new state, still own it) or **retract** (voluntarily withdraw from this file or these lines).
+The endorser discovers this the next time they query endorsement state. At that point they have two options: **re-endorse** (reviewed the diff, understand the new state, still own it) or **retract** (voluntarily withdraw from this file or these lines).
 
 **Retract** is a personal act. Only you can retract your own endorsement. **Revocation** is what the system does to your endorsement when the code changes underneath you. The distinction matters: revocations are events that happened to your endorsement; retractions are decisions you made about it.
 
@@ -249,7 +249,7 @@ Both are worth tracking. Most teams only track the first and call it the second.
 
 **Knowledge concentration risk.** VOUCH makes bus factor measurable. A codebase where one engineer endorses 80% of the critical path isn't safer than one with 80% cognitive debt — it's differently fragile. The framework requires tracking not just *how much* is covered but *how distributed* that coverage is. Any single endorser holding more than a configurable threshold of critical-path coverage is a systemic risk: one departure, one context-switch, one extended absence away from a coverage crisis. This concentration metric belongs on the same dashboard as cognitive debt. It answers a question no existing tool asks: *what happens to comprehension coverage if this person leaves tomorrow?*
 
-**Structured endorsement transfer.** When an endorser is transitioning — leaving the team, changing roles, going on extended leave — the protocol supports a formal handoff: the outgoing endorser designates one or more successors and maps their endorsements to specific people or scopes. This creates a *transfer request*, not an automatic transfer. The designees must actively review and endorse to complete it. But it creates institutional memory: what needs attention, who should look at what, in what order. An endorsement plan — a single transition split across several people — is a legitimate and supported pattern. The saddest version of this scenario is one where the endorser is already gone. The system surfaces the gap through `at_risk` endorsements; the agent skill becomes the recovery mechanism, reconstructing what the original owner understood by analyzing the code and generating explanations so the gap can be re-endorsed from scratch.
+**Structured endorsement transfer.** When an endorser is transitioning — leaving the team, changing roles, going on extended leave — the protocol supports a formal handoff: the outgoing endorser designates one or more successors and maps their endorsements to specific people or scopes. This creates a *transfer request*, not an automatic transfer. The designees must actively review and endorse to complete it. But it creates institutional memory: what needs attention, who should look at what, in what order. An endorsement plan — a single transition split across several people — is a legitimate and supported pattern. The saddest version of this scenario is one where the endorser is already gone. The system surfaces the gap through `at_risk` endorsements. The knowledge doesn't disappear — it's recoverable from the code itself, the commit history, the design patterns. But it costs time, and it costs more time without tooling that helps reconstruct what the original owner understood.
 
 ### The VOUCH Protocol (v0.1)
 
@@ -277,7 +277,7 @@ The atomic unit of the protocol is the **Endorsement Record** — a structured d
 Fields:
 
 - **`version`** — Protocol version. Allows forward-compatible evolution.
-- **`commit`** — The git commit hash the endorser was positioned at. The anchor: "I reviewed this file as it existed at this commit."
+- **`commit`** — The commit identifier the endorser was positioned at. The anchor: "I reviewed this file as it existed at this commit."
 - **`file_path`** — Relative path from repository root.
 - **`endorser`** — Human identity. Maps to the git author or a configured alias. Non-human agents MUST NOT appear in this field.
 - **`timestamp`** — ISO 8601 UTC. When the endorsement was recorded.
@@ -288,13 +288,13 @@ Fields:
 
 The protocol defines four operations:
 
-**`ENDORSE`** — Create or update an endorsement record for a file. The implementation MUST compute the current AST hash and store it with the endorsement. If the file already has an endorsement by the same endorser, the operation updates the timestamp and AST hash (re-endorsement after changes).
+**`ENDORSE`** — Create or update an endorsement record for a file at the current commit. If the file already has an endorsement by the same endorser, the operation updates the timestamp and commit reference (re-endorsement after changes).
 
 **`RETRACT`** — Voluntarily withdraw your own endorsement. Only the endorser can issue a retraction — it is a personal act, not an administrative one. Used when you determine you no longer understand the code, have changed roles, or want to explicitly signal that your coverage has lapsed. Implementations MAY surface staleness warnings (e.g., "this endorsement is 18 months old"), but staleness alone does not trigger revocation. Revocation is reserved for structural code changes; retraction is reserved for the endorser's own decision.
 
 **`TRANSFER`** — The current endorser designates one or more target humans as intended successors for their endorsements on specific files or ranges. Creates a `transfer_requested` record visible in each target's `QUERY` response and status output. Transfer requests do NOT count as endorsements — the targets must actively review and endorse to complete the handoff. A single transfer can split scope across multiple people (an endorsement plan). Transfer requests survive the transferring endorser's departure; they remain actionable even after the originator is no longer on the team.
 
-**`QUERY`** — Retrieve endorsement status for a file, directory, or glob pattern. Returns the list of current endorsements, their staleness, pending transfer requests, and whether the code has changed since endorsement.
+**`QUERY`** — Retrieve endorsement status for a file, directory, or glob pattern. Returns the list of current endorsements, their staleness, pending transfer requests, and whether the code has structurally changed since endorsement.
 
 **`REPORT`** — Compute cognitive debt metrics for a scope (file, directory, service, entire repository). Returns: percentage of lines covered by valid endorsements broken down by scope and staleness; knowledge concentration metrics (per-endorser coverage percentage, simulated departure impact); and outstanding transfer requests with their age.
 
@@ -302,7 +302,7 @@ The protocol defines four operations:
 
 Endorsements are not permanent. The protocol defines three invalidation triggers:
 
-1. **Structural change (system revocation).** When the logic, control flow, or data model of endorsed lines changes, those endorsements are soft-deleted by the system — **revoked**, not retracted. The record is preserved but marked `revoked: structural_change`. The materialized view updates immediately on hook runtime. Endorsements on unchanged lines survive. The endorser is notified on their next `vouch status`.
+1. **Structural change (system revocation).** When the logic, control flow, or data model of endorsed lines changes, those endorsements are soft-deleted by the system — **revoked**, not retracted. The record is preserved but marked `revoked: structural_change`. Coverage drops immediately. Endorsements on unchanged lines survive. The endorser discovers the revocation the next time they query endorsement state.
 
    What does NOT trigger revocation: formatter runs, whitespace changes, comment edits, file renames, code moving within the project structure. An endorsement survives a `gofmt` pass and survives a file moving from `src/payment/gateway.go` to `pkg/payment/gateway.go`. It does not survive a change to the control flow within the endorsed lines. The implementation is responsible for detecting the difference; the protocol mandates the behavior.
 
@@ -321,7 +321,7 @@ Not all code changes require endorsement re-evaluation:
 
 Individual endorsement records are the source of truth — append-only, one per endorsement act. But computing coverage from raw records requires traversing history. The protocol therefore requires implementations to maintain a **materialized state**: a pre-computed summary of current endorsement coverage that can be read in O(1).
 
-The materialized state MUST be updated atomically with each endorsement operation. Implementations SHOULD use a **git hook** (post-commit, post-merge, post-checkout) to keep it current automatically, without requiring a manual rebuild step. The materialized state is derived data — it can always be rebuilt from the endorsement records. CI reads the materialized state, not the raw records.
+The materialized state MUST be updated atomically with each endorsement operation. Implementations SHOULD update it automatically after relevant version control events (commits, merges, branch switches), without requiring a manual rebuild step. The materialized state is derived data — it can always be rebuilt from the endorsement records. CI reads the materialized state, not the raw records.
 
 #### Configuration Contract
 
